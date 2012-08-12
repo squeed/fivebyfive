@@ -80,6 +80,8 @@ extern "C" {
 #include <avr/io.h>				/* this takes care of definitions for our specific AVR */
 #include <avr/interrupt.h>		/* for interrupts, ISR macro, etc. */
 #include <string.h>				/* for strlen, strcpy, etc. */
+#include <avr/eeprom.h>
+
 }
 
 #include "fivebyfive_iodefs.h"		/* defines IO pins, and output_low(), output_high() macros */
@@ -98,6 +100,8 @@ extern "C" {
 #define D 3
 #define E 4
 #define F 5
+
+uint8_t EEMEM msgnum_e;
 
 uint8_t LEDS[25] = {
 	PACK(F,E),		/* top row, left to right */
@@ -410,42 +414,49 @@ int main()
 		// check font.c to see all the chars that are available, or possibly add more.
 		//
 
-		// static const unsigned char str[]   = "I \xF0 SOLDERING  ";
-		  static const unsigned char str[] = "HENNER   ";   // Henner
+		static const char *strs[] = {
+			" CASEY ",	
+			" YESAC ",
+			" NOSEBRIDGE ",
+			" NOISEBRIDGE ",
+			" EAT THE HACKERS ",
+			" SCIENCE! "
 
 
-		//static const unsigned char str[]   = "MORE BASS  ";   // -zarina
-		//static const unsigned char str[]   = "SAN FRANCISCO 2012  ";
-		//static const unsigned char str[]   = "HAPPY 53  ";    // -mio
+		};
+		static const uint8_t msgcnt = 6;
+		const char *str;
 
-		//static const unsigned char str[]   = "ABCDEFGHIJKLMONOPQRSTUVWXYZ1234567890\xF0!. ";
-		//static const unsigned char str[]   = "PEACE ON EARTH  ";
-		//static const unsigned char str[]   = "INTERNET PREDATOR  ";
-		//static const unsigned char str[]   = "EFFE IS YOU AND ME  ";
-		//static const unsigned char str[]   = "HELLO WORLD!  ";
-		//static const unsigned char str[]   = "I \xF0 PIZZA  ";
-		//static const unsigned char str[]   = "I \xF0 CATS  ";
-		//static const unsigned char str[]   = "GO ERIN!  ";
-		//static const unsigned char str[]   = "GYRE AND GIMBLE  ";
-		//static const unsigned char str[]   = "POSTAGRAM  ";
-		//static const unsigned char str[]   = "DANCE YURKOSAURUS DANCE  \xF0  ";
-        //static const unsigned char str[]   = "HI I AM HEATHER!  ";
-        //static const unsigned char str[]   = "HELLO!  ";
-		//static const unsigned char str[]   = "I \xF0 OAKLAND  ";
-		//static const unsigned char str[]   = "I \xF0 MEGGIE!  ";
-		//static const unsigned char str[]   = "I HELLA \xF0 OAKLAND  ";
-		//static const unsigned char str[]   = "RED BURNS ROCKS!   I \xF0 ITP  ";
+		//load from eeprom
+		msgnum = eeprom_read_byte(&msgnum_e);
+		//mod in case of invalid data
+		if (msgnum >= msgcnt)
+			msgnum = 0;
+		else
+			++msgnum;
+		msgnum %= msgcnt;
+		//write to eeprom
+		eeprom_write_byte(&msgnum_e, msgnum);
 
+
+		str = strs[msgnum];
+
+	
 		uint8_t strlength = strlen((char*) str);			// note: strlen expects char*
 
-		const uint8_t rep = 35;	// adjusts scrolling speed (higher number == slower, 35-40 seems about right)
+		const uint8_t rep = 25;	// adjusts scrolling speed (higher number == slower, 35-40 seems about right)
 
 		while (1)  {  /* infinite loop */
 
 			// toggle message if we see a button event (press)
 			if (buttonevent) {
-				msgnum = !msgnum;
 				len = 0;
+				++msgnum;
+				msgnum %= msgcnt;
+				str = strs[msgnum];
+				strlength = strlen((char*) str);
+				eeprom_write_byte(&msgnum_e, msgnum);
+
 				buttonevent = 0;	// clear event flag
 			}
 			
