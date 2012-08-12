@@ -1,0 +1,215 @@
+#
+# Makefile for FiveByFive V1 firmware (attiny85)
+#
+#	PROGRAMMING INSTRUCTIONS FOR FiveByFive Badge:
+#
+#	1. connect programmer to finished badge kit
+#
+#		first, connect the programmer (Atmel AVRISP MKII or adafruit USBtinyISP)
+#		to the "fivebyfive" badge.
+#		it should be connected to the 2x3 pin header.
+#		be careful to notice the pin 1 marking.
+#
+#		also, the badge should be powered with 1.8 to 2.0v only.
+#		(the coin battery MUST be removed!)
+#		you may need a special battery adapter (or a bench power supply) to do this.
+#
+#
+#	1A. prepare AVR fuses
+#
+#		(NOTE: this step is not necessary unless you have a completely blank AVR chip)
+#
+#		make
+#		make burn-fuse-8mhz
+#
+#
+#	1. compile and download your program
+#
+#		make clean
+#		make
+#		make program	(NOTE: programmer should be connected for this step)
+#
+#		remember, the top row of LEDs is not supposed to light up yet.
+#		you will have to imagine what it is doing.
+#
+#
+#	2. final burn fuse step (NOTE: you cannot program the AVR again after this step!)
+#
+#		once you are happy with your message (you won't see the top row though),
+#		then do this:
+#
+#			make burn-fuse-ONCE
+#
+#		disconnect the programmer and power supply.  
+#		put back the coin battery and try it!
+#
+#
+# revision history:
+#
+# - jul 1, 2012 - rolf
+#		test a version of this Makefile with "usbtiny" programmer (seems to work!)
+#
+# - may 26, 2012 - rolf
+#		demo code now requires font.c and font.h, so add font.o to the OBJ list.
+#
+# - may 6, 2012 - rolf
+#		add programming/downloading instructions above.
+#
+# - jan 8, 2012 - rolf
+#		switch mcu to attiny85.
+#		also, add burn-fuse-8mhz target.
+#
+# - jan 1, 2012 - rolf
+#		add "burn-fuse-ONCE" target.
+#		note: attiny25 fuses are normally set to (high low): 0xDF 0xE2 
+#			and after you use this it will be: 0x5F 0xE2
+#
+# - dec 20, 2011 - rolf
+#		note: we use g++ instead of just gcc - seems to use same backend though.
+#		try -Os (instead of -O2) to optimize for size... big diff!  (1854 vs 2014 bytes)
+#
+# - nov 20, 2011 - rolf
+#		created.
+#
+
+PRG            = fivebyfive_scrolltext
+OBJ            = fivebyfive_scrolltext.o font.o
+
+# note: use -Os to optimize for size
+
+MCU_TARGET     = attiny85
+##OPTIMIZE       = -O2
+OPTIMIZE       = -Os
+
+DEFS           =
+LIBS           =
+
+# set to one of the following:
+# 	"usbtiny" for the ladyada usbtiny programmer OR
+#	"avrispmkII" for the atmel AVR ISP MKII programmer
+##AVRDUDE_PROGRAMMER = avrispmkII
+AVRDUDE_PROGRAMMER = usbtiny
+
+
+# You should not have to change anything below here. (except dependencies!)
+
+CC             = avr-g++
+##CC             = avr-gcc
+
+# Override is only needed by avr-lib build system.
+
+##override CFLAGS        = -g -Wall $(OPTIMIZE) -mmcu=$(MCU_TARGET) $(DEFS)
+override CFLAGS        = -Wall $(OPTIMIZE) -mmcu=$(MCU_TARGET) $(DEFS)
+override LDFLAGS       = -Wl,-Map,$(PRG).map
+
+OBJCOPY        = avr-objcopy
+OBJDUMP        = avr-objdump
+
+##all: $(PRG).elf lst text eeprom
+all: $(PRG).elf lst text
+
+$(PRG).elf: $(OBJ)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+# dependencies (optional)
+rgbblink.o: rgbnode_iodefs.h
+
+clean:
+	rm -rf *.o $(PRG).elf *.eps *.png *.pdf *.bak 
+	rm -rf *.lst *.map $(EXTRA_CLEAN_FILES)
+
+lst:  $(PRG).lst
+
+%.lst: %.elf
+	$(OBJDUMP) -h -S $< > $@
+
+# Rules for building the .text rom images
+
+text: hex bin srec
+
+hex:  $(PRG).hex
+bin:  $(PRG).bin
+srec: $(PRG).srec
+
+%.hex: %.elf
+	$(OBJCOPY) -j .text -j .data -O ihex $< $@
+
+%.srec: %.elf
+	$(OBJCOPY) -j .text -j .data -O srec $< $@
+
+%.bin: %.elf
+	$(OBJCOPY) -j .text -j .data -O binary $< $@
+
+# Rules for building the .eeprom rom images
+
+eeprom: ehex ebin esrec
+
+ehex:  $(PRG)_eeprom.hex
+ebin:  $(PRG)_eeprom.bin
+esrec: $(PRG)_eeprom.srec
+
+%_eeprom.hex: %.elf
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O ihex $< $@
+
+%_eeprom.srec: %.elf
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O srec $< $@
+
+%_eeprom.bin: %.elf
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O binary $< $@
+
+
+#
+# Rules for programming via avrdude
+#
+
+AVRDUDE_PORT = usb
+##AVRDUDE_FLAGS = -p $(MCU_TARGET) -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT)
+AVRDUDE_FLAGS = -p $(MCU_TARGET) -c $(AVRDUDE_PROGRAMMER) -P $(AVRDUDE_PORT) -F
+
+program: $(PRG).hex
+	avrdude $(AVRDUDE_FLAGS) -e -U flash:w:$(PRG).hex
+
+
+#
+# this disables the RESET* pin on the AVR ATTINY device.
+# note: this is needed to activate the top row of LEDs, but once you
+#		do it, the AVR device can no longer be reprogrammed!! (unless you have a HV programmer)
+#
+burn-fuse-ONCE:
+	avrdude $(AVRDUDE_FLAGS) -V -U lfuse:w:0xe2:m -U hfuse:w:0x5f:m
+
+#
+# this sets an AVR ATTINY device to run at 8mhz (default from atmel is 1mhz).
+#	specifically, this disables the CKDIV8 fuse bit.
+#	IF YOU HAVE A NEW CHIP, YOU NEED TO DO THIS STEP!!
+#
+burn-fuse-8mhz:
+	avrdude $(AVRDUDE_FLAGS) -V -U lfuse:w:0xe2:m -U hfuse:w:0xdf:m
+
+
+read-fuse:
+	avrdude $(AVRDUDE_FLAGS) -u -U lfuse:r:l.txt:r
+	avrdude $(AVRDUDE_FLAGS) -u -U hfuse:r:h.txt:r
+	avrdude $(AVRDUDE_FLAGS) -u -U efuse:r:e.txt:r
+
+# Every thing below here is used by avr-libc's build system and can be ignored
+# by the casual user.
+
+FIG2DEV                 = fig2dev
+EXTRA_CLEAN_FILES       = *.hex *.bin *.srec
+
+dox: eps png pdf
+
+eps: $(PRG).eps
+png: $(PRG).png
+pdf: $(PRG).pdf
+
+%.eps: %.fig
+	$(FIG2DEV) -L eps $< $@
+
+%.pdf: %.fig
+	$(FIG2DEV) -L pdf $< $@
+
+%.png: %.fig
+	$(FIG2DEV) -L png $< $@
+
